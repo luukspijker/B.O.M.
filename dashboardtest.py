@@ -5,7 +5,7 @@ import webbrowser
 from threading import Timer
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
-app.title = "Gemeentelijk Strategie Dashboard"
+app.title = "Beleid Overzicht Meter (B.O.M.)"
 
 app.layout = html.Div(
     [
@@ -26,7 +26,7 @@ app.layout = html.Div(
                     style={"display": "flex", "flexDirection": "column", "alignItems": "flex-start", "marginRight": "15px"},
                 ),
                 html.H1(
-                    "Gemeentelijk Strategie Dashboard",
+                    "Beleid Overzicht Meter (B.O.M.)",
                     style={"margin": "0", "marginLeft": "auto", "textAlign": "right"},
                 ),
             ],
@@ -380,3 +380,4 @@ def open_browser():
 if __name__ == "__main__":
     Timer(1, open_browser).start()
     app.run(debug=True)
+
