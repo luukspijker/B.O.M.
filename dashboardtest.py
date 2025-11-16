@@ -69,8 +69,9 @@ def show_goal_form(n):
     return html.Div(
         [
             html.H3("Nieuw doel toevoegen"),
-            dcc.Input(id={"type": "goal-form", "name": "goal-name"}, placeholder="Naam van het doel", type="text", style={"marginRight": "10px"}),
-            dcc.Input(id={"type": "goal-form", "name": "goal-target"}, placeholder="Streefwaarde", type="number", style={"marginRight": "10px"}),
+            dcc.Input(id={"type": "goal-form", "name": "goal-name"}, placeholder="Naam van het doel", type="text", style={"marginRight": "10px", "width": "220px"}),
+            dcc.Input(id={"type": "goal-form", "name": "goal-target"}, placeholder="Streefwaarde", type="number", style={"marginRight": "10px", "width": "140px"}),
+            dcc.Input(id={"type": "goal-form", "name": "goal-unit"}, placeholder="Eenheid (bijv. %, bomen, km, euro)", type="text", style={"marginRight": "10px", "width": "200px"}),
             html.Button("Opslaan", id={"type": "goal-form", "name": "save-goal"}, style={"background": "#007BFF", "color": "white"}),
             html.Button("Annuleren", id={"type": "goal-form", "name": "cancel-goal"}, style={"marginLeft": "10px"}),
         ]
@@ -85,17 +86,18 @@ def show_goal_form(n):
     Input({"type": "goal-form", "name": "cancel-goal"}, "n_clicks"),
     State({"type": "goal-form", "name": "goal-name"}, "value"),
     State({"type": "goal-form", "name": "goal-target"}, "value"),
+    State({"type": "goal-form", "name": "goal-unit"}, "value"),
     State("goals-store", "data"),
     prevent_initial_call=True,
 )
-def handle_goal_actions(save_clicks, cancel_clicks, name, target, goals):
+def handle_goal_actions(save_clicks, cancel_clicks, name, target, unit, goals):
     goals = goals or []
     trigger = ctx.triggered_id
     if not trigger:
         return dash.no_update, dash.no_update
 
     if trigger["name"] == "save-goal" and name and target is not None:
-        goals.append({"name": name, "target": float(target)})
+        goals.append({"name": name, "target": float(target), "unit": unit or ""})
         return goals, html.Div()
     if trigger["name"] == "cancel-goal":
         return goals, html.Div()
@@ -131,20 +133,23 @@ def show_project_form(n, goals):
     if not goals:
         return html.Div("⚠️ Voeg eerst minstens één doel toe.", style={"color": "darkred"})
 
-    inputs = [
-        html.Div(
-            [
-                html.Label(f"Bijdrage aan {g['name']} (%)"),
-                dcc.Input(id={"type": "project-form", "goal": g["name"]}, type="number", placeholder="0-100", min=0, max=100, style={"marginLeft": "10px", "width": "80px"}),
-            ],
-            style={"marginBottom": "8px"},
-        ) for g in goals
-    ]
+    inputs = []
+    for g in goals:
+        unit = g.get("unit", "%") or "%"
+        inputs.append(
+            html.Div(
+                [
+                    html.Label(f"Bijdrage aan {g['name']} ({unit})"),
+                    dcc.Input(id={"type": "project-form", "goal": g["name"]}, type="number", placeholder=f"bijv. 10 ({unit})", style={"marginLeft": "10px", "width": "120px"}),
+                ],
+                style={"marginBottom": "8px"},
+            )
+        )
 
     return html.Div(
         [
             html.H3("Nieuw project toevoegen"),
-            dcc.Input(id={"type": "project-form", "name": "project-name"}, placeholder="Naam van het project", type="text", style={"marginRight": "10px", "marginBottom": "10px"}),
+            dcc.Input(id={"type": "project-form", "name": "project-name"}, placeholder="Naam van het project", type="text", style={"marginRight": "10px", "marginBottom": "10px", "width": "300px"}),
             dcc.Textarea(id={"type": "project-form", "name": "project-description"}, placeholder="Beschrijving van het project (optioneel)", style={"width": "100%", "height": "80px", "marginBottom": "10px"}),
             html.Div(inputs),
             html.Button("Opslaan", id={"type": "project-form", "name": "save-project"}, style={"background": "#28A745", "color": "white", "marginTop": "10px"}),
@@ -244,16 +249,12 @@ def save_or_cancel_edit(save_clicks, cancel_clicks, names, descs, goal_values, g
     # If save clicked -> update project
     if trigger.get("type") == "save-edit-project":
         contribs = {}
-        # goal_values is a flat list with one sub-list per index because of the double-ALL pattern;
-        # when there is only one index it may be a flat list — handle both cases.
         # Normalize goal_values for index:
         normalized = None
         if isinstance(goal_values, list) and len(goal_values) > 0 and isinstance(goal_values[0], list):
-            # goal_values is [[...], [...], ...]
             if idx < len(goal_values):
                 normalized = goal_values[idx]
         else:
-            # goal_values is flat list corresponding to the single edited index
             normalized = goal_values
 
         if goals and normalized:
@@ -284,17 +285,21 @@ def render_dashboard(goals, projects, edit_index):
     if not goals:
         return html.Div("➕ Begin met het toevoegen van doelen.", style={"fontSize": "18px"})
 
+    # build a quick lookup for goal units by name
+    goal_unit_map = {g["name"]: (g.get("unit", "") or "") for g in goals}
+
     # Goals with narrower delete buttons (keeps gauge width)
     goal_cards = []
     for i, g in enumerate(goals):
         total_contrib = sum(p["contributions"].get(g["name"], 0) for p in projects)
         target = float(g["target"])
+        unit = g.get("unit", "") or ""
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=total_contrib,
-            number={"suffix": f" / {target}"},
+            number={"suffix": f" / {target} {unit}".strip()},
             gauge={"axis": {"range": [0, max(target, total_contrib)]}, "bar": {"color": "#28A745" if total_contrib >= target else "#007BFF"}},
-            title={"text": g["name"]},
+            title={"text": f"{g['name']}" + (f" ({unit})" if unit else "")},
         ))
         fig.update_layout(height=250, margin=dict(l=10, r=10, t=40, b=10))
 
@@ -314,17 +319,21 @@ def render_dashboard(goals, projects, edit_index):
     for i, p in enumerate(projects):
         if edit_index is not None and i == edit_index:
             # show edit form for project i
-            goal_inputs = [
-                html.Div(
-                    [
-                        html.Label(f"Bijdrage aan {g['name']} (%)"),
-                        dcc.Input(id={"type": "edit-project-goal", "index": i, "goal": g["name"]},
-                                  type="number", value=p["contributions"].get(g["name"], 0), min=0, max=100,
-                                  style={"marginLeft": "10px", "width": "80px"}),
-                    ],
-                    style={"marginBottom": "8px"},
-                ) for g in goals
-            ]
+            goal_inputs = []
+            for g in goals:
+                unit = g.get("unit", "") or ""
+                goal_inputs.append(
+                    html.Div(
+                        [
+                            html.Label(f"Bijdrage aan {g['name']} ({unit})"),
+                            dcc.Input(id={"type": "edit-project-goal", "index": i, "goal": g["name"]},
+                                      type="number", value=p["contributions"].get(g["name"], 0),
+                                      style={"marginLeft": "10px", "width": "120px"}),
+                        ],
+                        style={"marginBottom": "8px"},
+                    )
+                )
+
             project_cards.append(
                 html.Div(
                     [
@@ -339,7 +348,13 @@ def render_dashboard(goals, projects, edit_index):
                 )
             )
         else:
-            contribs = html.Ul([html.Li(f"{k}: {v}%") for k, v in p["contributions"].items()])
+            contribs_items = []
+            for k, v in p["contributions"].items():
+                unit = goal_unit_map.get(k, "")
+                label = f"{k}: {v}" + (f" {unit}" if unit else "")
+                contribs_items.append(html.Li(label))
+            contribs = html.Ul(contribs_items)
+
             project_cards.append(
                 html.Details(
                     [
@@ -380,4 +395,3 @@ def open_browser():
 if __name__ == "__main__":
     Timer(1, open_browser).start()
     app.run(debug=True)
-
